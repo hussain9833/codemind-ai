@@ -1,0 +1,559 @@
+// CodeMind AI data model.
+// Ownership chain: User -> Project -> (Repository, Investigation, Incident, ...).
+// Every project-scoped table carries projectId so authorization can be enforced with
+// a single `project.userId` check (see src/lib/authz.ts).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+  // Direct (non-pooled) connection, used by `prisma migrate`. On Neon this is the
+  // non-"-pooler" host. Falls back to DATABASE_URL when both are the same.
+  directUrl = env("DIRECT_URL")
+}
+
+// ───────────── Enums ─────────────
+
+enum IndexStatus {
+  NOT_INDEXED
+  INDEXING
+  INDEXED
+  FAILED
+}
+
+enum InvestigationStatus {
+  OPEN
+  INVESTIGATING
+  ROOT_CAUSE
+  /// The investigation finished without enough evidence to name a root cause.
+  INCONCLUSIVE
+  FAILED
+  FIX_PROPOSED
+  VALIDATED
+  CLOSED
+}
+
+enum Severity {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum Level {
+  HIGH
+  MEDIUM
+  LOW
+}
+
+enum EvidenceType {
+  FILE
+  LINE
+  SYMBOL
+  COMMIT
+  TEST
+  LOG
+  DEPENDENCY
+  DOCUMENTATION
+}
+
+enum HypothesisStatus {
+  CANDIDATE
+  SUPPORTED
+  REFUTED
+  INCONCLUSIVE
+}
+
+enum EvidenceStance {
+  SUPPORTS
+  CONTRADICTS
+  NEUTRAL
+}
+
+enum PatchStatus {
+  PROPOSED
+  APPROVED
+  REJECTED
+  APPLIED
+}
+
+enum RunStatus {
+  NOT_RUN
+  PENDING
+  RUNNING
+  PASSED
+  FAILED
+}
+
+enum IncidentStatus {
+  OPEN
+  MONITORING
+  RESOLVED
+}
+
+enum PullRequestStatus {
+  DRAFT
+  OPEN
+  MERGED
+  CLOSED
+}
+
+enum AIExecutionStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
+enum ArchitectureNodeKind {
+  MODULE
+  FILE
+  SERVICE
+  EXTERNAL
+}
+
+// ───────────── Identity ─────────────
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  passwordHash String
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  sessions         Session[]
+  githubConnection GithubConnection?
+  projects         Project[]
+}
+
+/// Server-side session. Only a SHA-256 hash of the cookie token is stored.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userAgent String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+/// A user's linked GitHub identity (GitHub App user-to-server token, encrypted at rest).
+model GithubConnection {
+  id                    String    @id @default(cuid())
+  userId                String    @unique
+  githubUserId          BigInt
+  githubLogin           String
+  avatarUrl             String?
+  accessTokenEnc        String
+  refreshTokenEnc       String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([githubUserId])
+}
+
+// ───────────── Projects & repository ─────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  userId      String
+  name        String
+  description String?
+  /// Branch CodeMind analyses for this project.
+  branch      String
+  archivedAt  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user           User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  repository     Repository?
+  investigations Investigation[]
+  incidents      Incident[]
+  pullRequests   PullRequest[]
+  aiExecutions   AIExecution[]
+  archNodes      ArchitectureNode[]
+  archEdges      ArchitectureEdge[]
+
+  @@index([userId, createdAt])
+}
+
+model Repository {
+  id                   String      @id @default(cuid())
+  projectId            String      @unique
+  githubRepoId         BigInt
+  githubInstallationId BigInt
+  owner                String
+  name                 String
+  fullName             String
+  defaultBranch        String
+  isPrivate            Boolean
+  htmlUrl              String
+  language             String?
+  framework            String?
+  indexStatus          IndexStatus @default(NOT_INDEXED)
+  lastIndexedAt        DateTime?
+  lastIndexedSha       String?
+  /// Branch the current index was built from.
+  indexedBranch        String?
+  /// Live progress while INDEXING: { stage, detail, startedAt }.
+  indexProgress        Json?
+  indexError           String?
+  /// Output of repository analysis (languages, frameworks, dependencies, entry points...).
+  analysis             Json?
+  indexStats           Json?
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  project Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  chunks  CodeChunk[]
+  files   RepoFile[]
+  symbols RepoSymbol[]
+  commits RepoCommit[]
+
+  @@index([githubRepoId])
+  @@index([githubInstallationId])
+}
+
+model CodeChunk {
+  id           String   @id @default(cuid())
+  repositoryId String
+  filePath     String
+  startLine    Int
+  endLine      Int
+  language     String?
+  symbol       String?
+  /// "symbol" (one declaration) or "file-part" (code between declarations / docs / config).
+  kind         String   @default("file-part")
+  branch       String?
+  imports      String[]
+  content      String
+  contentHash  String
+  commitSha    String?
+  /// pgvector column with NO fixed dimension: the embedding model is not chosen yet.
+  /// Created with a raw SQL migration; Prisma cannot read/write it directly.
+  embedding    Unsupported("vector")?
+  /// Model + dimension that produced `embedding` (dimension comes from the model, never hard-coded).
+  embeddingModel String?
+  embeddingDim   Int?
+  embeddedAt     DateTime?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, filePath])
+  @@index([repositoryId, contentHash])
+  @@index([repositoryId, embeddingModel])
+}
+
+// ───────────── Investigations ─────────────
+
+model Investigation {
+  id             String              @id @default(cuid())
+  projectId      String
+  title          String
+  problem        String
+  status         InvestigationStatus @default(OPEN)
+  severity       Severity            @default(MEDIUM)
+  confidence     Level?
+  rootCause      String?
+  rootCauseLevel Level?
+  incidentId     String?
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+  closedAt       DateTime?
+  /// Structured root-cause analysis (what, why, files, symbols, alternatives).
+  rootCauseDetail Json?
+  /// Investigation plan produced by the planner.
+  plan           Json?
+  error          String?
+
+  project      Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  incident     Incident?     @relation(fields: [incidentId], references: [id], onDelete: SetNull)
+  hypotheses   Hypothesis[]
+  evidence     Evidence[]
+  events       InvestigationEvent[]
+  patches      Patch[]
+  testRuns     TestRun[]
+  pullRequests PullRequest[]
+  aiExecutions AIExecution[]
+
+  @@index([projectId, status])
+  @@index([projectId, createdAt])
+  @@index([incidentId])
+}
+
+model Hypothesis {
+  id              String        @id @default(cuid())
+  investigationId String
+  title           String
+  summary         String
+  likelihood      Level
+  status          HypothesisStatus @default(CANDIDATE)
+  /// Verification reasoning (model output, validated against evidence ids).
+  verification    String?
+  isRootCause     Boolean       @default(false)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  evidence      Evidence[]
+  links         HypothesisEvidence[]
+
+  @@index([investigationId])
+}
+
+model Evidence {
+  id              String         @id @default(cuid())
+  investigationId String
+  hypothesisId    String?
+  type            EvidenceType
+  stance          EvidenceStance @default(NEUTRAL)
+  title           String
+  note            String
+  filePath        String?
+  startLine       Int?
+  endLine         Int?
+  symbol          String?
+  commitSha       String?
+  dependency      String?
+  excerpt         String?
+  /// Why the evidence engine selected it, and its deterministic rank score.
+  reasons         String[]
+  score           Float?
+  createdAt       DateTime       @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  hypothesis    Hypothesis?   @relation(fields: [hypothesisId], references: [id], onDelete: SetNull)
+  links         HypothesisEvidence[]
+
+  @@index([investigationId])
+  @@index([hypothesisId])
+}
+
+model Patch {
+  id              String      @id @default(cuid())
+  investigationId String
+  filePath        String
+  diff            String
+  explanation     String
+  risk            Level
+  status          PatchStatus @default(PROPOSED)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  testRuns      TestRun[]
+
+  @@index([investigationId, status])
+}
+
+model TestRun {
+  id              String    @id @default(cuid())
+  investigationId String
+  patchId         String?
+  name            String
+  kind            String
+  status          RunStatus @default(NOT_RUN)
+  output          String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime  @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+  patch         Patch?        @relation(fields: [patchId], references: [id], onDelete: SetNull)
+
+  @@index([investigationId])
+  @@index([patchId])
+}
+
+model Incident {
+  id         String         @id @default(cuid())
+  projectId  String
+  title      String
+  severity   Severity       @default(MEDIUM)
+  source     String?
+  status     IncidentStatus @default(OPEN)
+  openedAt   DateTime       @default(now())
+  resolvedAt DateTime?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  investigations Investigation[]
+
+  @@index([projectId, status])
+}
+
+model PullRequest {
+  id              String            @id @default(cuid())
+  projectId       String
+  investigationId String?
+  githubNumber    Int?
+  title           String
+  branch          String
+  htmlUrl         String?
+  status          PullRequestStatus @default(DRAFT)
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  investigation Investigation? @relation(fields: [investigationId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, status])
+  @@index([investigationId])
+}
+
+/// Audit record of every model call. Prompts/responses may contain repository code,
+/// so they are stored server-side only and never exposed without an ownership check.
+model AIExecution {
+  id              String            @id @default(cuid())
+  projectId       String
+  investigationId String?
+  purpose         String
+  model           String
+  status          AIExecutionStatus @default(PENDING)
+  inputTokens     Int?
+  outputTokens    Int?
+  latencyMs       Int?
+  error           String?
+  createdAt       DateTime          @default(now())
+
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  investigation Investigation? @relation(fields: [investigationId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, createdAt])
+  @@index([investigationId])
+}
+
+// ───────────── Architecture ─────────────
+
+model ArchitectureNode {
+  id        String               @id @default(cuid())
+  projectId String
+  kind      ArchitectureNodeKind
+  name      String
+  path      String?
+  metadata  Json?
+  createdAt DateTime             @default(now())
+
+  project  Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  outgoing ArchitectureEdge[] @relation("EdgeFrom")
+  incoming ArchitectureEdge[] @relation("EdgeTo")
+
+  @@unique([projectId, kind, name])
+  @@index([projectId])
+}
+
+model ArchitectureEdge {
+  id         String   @id @default(cuid())
+  projectId  String
+  fromNodeId String
+  toNodeId   String
+  relation   String
+  createdAt  DateTime @default(now())
+
+  project Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  from    ArchitectureNode @relation("EdgeFrom", fields: [fromNodeId], references: [id], onDelete: Cascade)
+  to      ArchitectureNode @relation("EdgeTo", fields: [toNodeId], references: [id], onDelete: Cascade)
+
+  @@unique([fromNodeId, toNodeId, relation])
+  @@index([projectId])
+  @@index([toNodeId])
+}
+
+// ───────────── Repository index (Phase 3) ─────────────
+
+model RepoFile {
+  id           String   @id @default(cuid())
+  repositoryId String
+  path         String
+  language     String
+  category     String
+  isTest       Boolean  @default(false)
+  size         Int
+  lineCount    Int
+  sha          String
+  imports      String[]
+  exports      String[]
+  createdAt    DateTime @default(now())
+
+  repository Repository   @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  symbols    RepoSymbol[]
+
+  @@unique([repositoryId, path])
+  @@index([repositoryId, category])
+}
+
+model RepoSymbol {
+  id           String  @id @default(cuid())
+  repositoryId String
+  fileId       String
+  name         String
+  kind         String
+  parent       String?
+  lineStart    Int
+  lineEnd      Int
+  exported     Boolean @default(false)
+  signature    String
+  meta         Json?
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  file       RepoFile   @relation(fields: [fileId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, name])
+  @@index([fileId])
+}
+
+model RepoCommit {
+  id           String   @id @default(cuid())
+  repositoryId String
+  sha          String
+  message      String
+  authorName   String
+  authoredAt   DateTime
+  files        String[]
+
+  repository Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@unique([repositoryId, sha])
+  @@index([repositoryId, authoredAt])
+}
+
+/// Many-to-many: one piece of evidence can support one hypothesis and contradict another.
+model HypothesisEvidence {
+  hypothesisId String
+  evidenceId   String
+  stance       EvidenceStance
+
+  hypothesis Hypothesis @relation(fields: [hypothesisId], references: [id], onDelete: Cascade)
+  evidence   Evidence   @relation(fields: [evidenceId], references: [id], onDelete: Cascade)
+
+  @@id([hypothesisId, evidenceId])
+  @@index([evidenceId])
+}
+
+/// Real, timestamped steps of an investigation (never fabricated or back-filled).
+model InvestigationEvent {
+  id              String   @id @default(cuid())
+  investigationId String
+  type            String
+  label           String
+  detail          String?
+  createdAt       DateTime @default(now())
+
+  investigation Investigation @relation(fields: [investigationId], references: [id], onDelete: Cascade)
+
+  @@index([investigationId, createdAt])
+}

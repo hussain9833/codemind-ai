@@ -1,0 +1,49 @@
+{
+  "name": "codemind-ai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --webpack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "postinstall": "prisma generate",
+    "db:generate": "node scripts/with-env.mjs prisma generate",
+    "db:migrate": "node scripts/with-env.mjs prisma migrate deploy",
+    "db:migrate:dev": "node scripts/with-env.mjs prisma migrate dev",
+    "db:studio": "node scripts/with-env.mjs prisma studio",
+    "test": "vitest run",
+    "db:status": "node scripts/with-env.mjs prisma migrate status",
+    "dev:webpack": "next dev --webpack",
+    "dev:turbo": "next dev"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@prisma/client": "^6.19.3",
+    "antd": "^6.6.5",
+    "clsx": "^2.1.1",
+    "ignore": "^7.0.12",
+    "lucide-react": "^1.52.0",
+    "next": "16.4.0",
+    "octokit": "^5.0.5",
+    "prisma": "^6.19.3",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "server-only": "^0.0.1",
+    "tar-stream": "^3.2.2",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@tailwindcss/turbopack": "^4",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/tar-stream": "^3.1.5",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.0",
+    "tailwindcss": "^4",
+    "typescript": "^5.9.3",
+    "vitest": "^5.0.3"
+  }
+}
