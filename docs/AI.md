@@ -52,10 +52,3 @@ limiting and an `AIExecution` audit row (purpose, model, status, tokens, latency
 | Root-cause files must exist in the index | `investigate.ts` |
 | Repository text is data: tag-escaped, wrapped in `<evidence>`, secrets redacted | `prompts.ts`, `redact.ts` |
 | Timeline events are written when steps happen, never back-filled | `investigate.ts` |
-
-## Running live tests
-```
-CM_LIVE_AI=1 CM_FIXTURE_REPO=<git checkout> node scripts/with-env.mjs npx vitest run live
-CM_LIVE_AI=1 CM_BUG_REPO=<checkout with a planted bug> node scripts/with-env.mjs npx vitest run investigate-bug
-```
-These use your real Neon database and NVIDIA key; they create a throw-away user and delete it afterwards.

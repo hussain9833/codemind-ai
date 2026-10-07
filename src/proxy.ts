@@ -6,11 +6,13 @@ import { NextResponse, type NextRequest } from "next/server";
  * server-side in layouts, pages, actions and route handlers (requireUser / requireProject).
  */
 const PUBLIC = ["/login", "/signup"];
+/** Brand assets and metadata files must be reachable without a session (crawlers, link previews, browser tabs). */
+const PUBLIC_ASSETS = ["/icon.svg", "/apple-icon", "/opengraph-image", "/twitter-image", "/manifest.webmanifest", "/favicon.ico"];
 
 export function proxy(req: NextRequest) {
   const { pathname, search } = req.nextUrl;
   const hasCookie = req.cookies.has("cm_session");
-  const isPublic = PUBLIC.some((p) => pathname === p);
+  const isPublic = PUBLIC.some((p) => pathname === p) || PUBLIC_ASSETS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
 
   if (!hasCookie && !isPublic) {
     const url = req.nextUrl.clone();
