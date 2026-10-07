@@ -30,9 +30,9 @@ export default async function AuthLayout({ children }: { children: React.ReactNo
         <p className="text-xs text-subtle">The repository is the source of truth. The developer stays in control.</p>
       </aside>
 
-      <main className="relative grid place-items-center px-5 py-12">
+      <main className="relative grid grid-cols-[minmax(0,1fr)] place-items-center px-5 py-12">
         <div className="absolute right-4 top-4"><ThemeToggle /></div>
-        <div className="w-full max-w-sm animate-in">
+        <div className="w-full min-w-0 max-w-sm animate-in">
           <div className="mb-8 flex items-center gap-2.5 text-lg font-semibold tracking-tight lg:hidden">
             <span className="grid size-9 place-items-center rounded-xl bg-gradient-to-br from-accent to-purple text-accent-fg"><Brain className="size-[18px]" /></span>
             CodeMind AI

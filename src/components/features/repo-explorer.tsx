@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { defineCodeMindThemes, EDITOR_FONT, monacoThemeName, useAppTheme } from "@/components/ui/code-theme";
 import { EmptyState, Skeleton } from "@/components/ui/states";
+import { TextInput } from "@/components/ui/input";
 import { Tabs } from "@/components/ui/tabs";
 import { useToast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
@@ -182,11 +183,7 @@ export function RepoExplorer({ projectId }: { projectId: string }) {
       <aside className="flex max-h-80 w-full shrink-0 flex-col border-b border-border bg-surface md:max-h-none md:w-[22rem] md:border-b-0 md:border-r" aria-label="Search and files">
         <form onSubmit={runSearch} className="space-y-2.5 border-b border-border p-3">
           <div className="flex gap-2">
-            <label className="relative block min-w-0 flex-1">
-              <span className="sr-only">Search repository</span>
-              <Search className="absolute left-3 top-2.5 size-4 text-subtle" aria-hidden />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Find auth, validateToken, src/auth…" className="h-9 w-full rounded-lg border border-border bg-surface-2 pl-9 pr-3 text-sm outline-none transition-all placeholder:text-subtle hover:border-border-strong focus:border-accent focus:ring-4 focus:ring-accent/15" />
-            </label>
+            <label className="block min-w-0 flex-1"><span className="sr-only">Search repository</span><TextInput value={query} onChange={(e) => setQuery(e.target.value)} onClear={() => { setQuery(""); setResults(null); }} icon={<Search />} placeholder="Find auth, validateToken, src/auth…" className="[&_input]:h-9" /></label>
             <Button size="md" type="submit" variant="primary" disabled={searching}>{searching ? "…" : "Search"}</Button>
           </div>
           <Tabs<Mode> label="Search type" size="sm" items={MODES} value={mode} onChange={setMode} className="flex w-full justify-between overflow-x-auto" />

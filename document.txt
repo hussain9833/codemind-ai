@@ -1,0 +1,358 @@
+=====================================================================
+CODEMIND AI  -  PROJECT GUIDE (SHORT, HUMAN-READABLE)
+=====================================================================
+
+Tagline: Investigate. Understand. Fix. Validate.
+
+
+---------------------------------------------------------------------
+1. WHAT IS IT? (30-second version)
+---------------------------------------------------------------------
+CodeMind AI is a web app that helps a developer find out WHY something
+is broken in a code repository. You connect a GitHub repository, describe a
+problem ("users get a 401 on public endpoints"), and CodeMind:
+
+  1. Reads and indexes the code.
+  2. Collects real evidence (files, line numbers, functions, commits, tests).
+  3. Proposes several possible causes and checks them against the code.
+  4. Names a root cause - or honestly says "not enough evidence".
+
+It is NOT a chatbot with GitHub attached. Every answer must point to real
+code you can click and open.
+
+Intended end goal (workflow):
+  Problem -> Evidence -> Hypotheses -> Investigation -> Root Cause -> Fix
+  -> Tests -> Validation -> Review -> Human Approval -> Pull Request
+
+
+---------------------------------------------------------------------
+2. WHAT WORKS TODAY vs WHAT IS NOT BUILT YET
+---------------------------------------------------------------------
+WORKS (built and tested):
+  - Sign up / log in / log out, protected pages
+  - Connect GitHub (GitHub App), pick repo and branch, create a project
+  - Index a repository (files, functions, classes, imports, commits)
+  - Repository analysis: languages, frameworks, auth, database, API routes
+  - Code explorer (Monaco editor), search by text / file / symbol /
+    dependency / git history, evidence ranking
+  - Semantic (meaning-based) search with vector embeddings
+  - "Ask" page: questions answered with clickable evidence
+  - Investigations: plan -> evidence -> hypotheses -> verification ->
+    root cause (or "insufficient evidence"), with a real timeline
+  - Redesigned light/dark UI, favicon and meta tags
+
+NOT BUILT YET (shown as "Not run" / "not available" in the UI):
+  - Generate fix, generate tests, run validation, AI code review
+  - Human approval step and automatic GitHub branch / commit / pull request
+  - Real repository health scores (current numbers are labelled "Sample data")
+  - Safe sandbox to execute repository code (never run on the web server)
+
+Being honest about this is part of the design: the UI never pretends
+something ran when it did not.
+
+
+---------------------------------------------------------------------
+3. WHY IT IS DIFFERENT
+---------------------------------------------------------------------
+1) Evidence first, AI second.
+   Normal AI tools stuff code into a prompt and trust the answer.
+   CodeMind first finds evidence with plain, repeatable search (no AI),
+   ranks it, and only then asks the AI to reason over a small set of it.
+
+2) The AI is not allowed to invent things.
+   The server checks the AI output: unknown citations are removed, file
+   paths that do not exist in the repository are removed, and a conclusion
+   with no valid evidence is downgraded to "not enough evidence".
+
+3) Honest confidence.
+   Only High / Medium / Low - never fake percentages. The code also caps the
+   AI's confidence by how much evidence exists (e.g. one file = never "High").
+
+4) "I don't know" is a valid result.
+   If evidence is missing, CodeMind says so and tells you what would help
+   (logs, stack trace, reproduction steps).
+
+5) Human stays in control.
+   Nothing changes your repository. A pull request will only be created
+   after explicit approval (future phase).
+
+6) Hybrid search, not vector-only.
+   Exact text + symbols + file names + dependencies + git history + vector
+   search are combined, so exact identifiers are not lost.
+
+
+---------------------------------------------------------------------
+4. TECH STACK
+---------------------------------------------------------------------
+Frontend:  Next.js 16 (App Router), React 19, TypeScript, Tailwind CSS v4,
+           Monaco editor, Lucide icons, Geist font
+Backend:   Next.js server components, server actions, route handlers
+Database:  Neon PostgreSQL + Prisma ORM + pgvector (vectors) + pg_trgm
+           (fast text search)
+Auth:      Own implementation: scrypt password hashing, random session token
+           in an HttpOnly cookie (only its SHA-256 hash is stored)
+GitHub:    A GitHub App (not a personal token): user authorization + server
+           installation tokens, tokens encrypted at rest (AES-256-GCM)
+AI:        NVIDIA NIM - chat model with fallbacks, embedding model
+           (nvidia/nemotron-3-embed-1b, 2048 dimensions)
+Parsing:   TypeScript compiler API for TS/JS; light scanners for Python,
+           Go, Rust, Java, Ruby, PHP
+
+
+---------------------------------------------------------------------
+5. HOW IT WAS BUILT (phases)
+---------------------------------------------------------------------
+Phase 1 - UI foundation
+  Dark-first design system, app shell (sidebar, top bar, Ctrl+K search),
+  dashboard, projects, repository explorer, investigation pages, evidence /
+  hypothesis / root-cause / diff / validation components, empty / loading /
+  error states. Used sample data, clearly marked.
+
+Phase 2 - Real infrastructure
+  Prisma schema (users, projects, repositories, chunks, investigations,
+  evidence...), authentication, server-side authorization (every project
+  request checks ownership), GitHub App flow (connect -> installation ->
+  repository -> branch -> project), environment/secret handling.
+
+Phase 3 - Repository intelligence (no AI)
+  Pipeline: download repo as one tarball -> filter junk (node_modules, build
+  output, binaries, secrets) -> parse code into functions/classes/imports ->
+  split into smart chunks -> analyze stack -> store -> deterministic search
+  and an evidence ranking engine. Checked on a real open-source repository.
+
+Phase 4 - AI on top of the evidence
+  AIProvider abstraction (NVIDIA first), embeddings + pgvector index,
+  hybrid retrieval (exact + vector merged with Reciprocal Rank Fusion),
+  "Ask" chat, and the Investigation Orchestrator (plan -> tools ->
+  hypotheses -> verification -> root cause) with real timeline events.
+  Tested live: it found a planted bug (JWT_SECRET vs JWT_SECRET_KEY) with
+  cited evidence, and correctly said "not enough evidence" for questions the
+  repository cannot answer.
+
+UI redesign
+  Separate designed light and dark themes, grouped navigation, structured AI
+  response cards, evidence cards (supports / contradicts / unverified),
+  investigation progress bar, IDE-style explorer, eye-toggle password fields,
+  favicon + social meta tags.
+
+Phases 5-6 (not done)
+  Fix -> tests -> validation -> review -> approval -> pull request, then
+  security audit, performance work, real health metrics, incident memory.
+
+
+---------------------------------------------------------------------
+6. HOW AN INVESTIGATION WORKS (simple)
+---------------------------------------------------------------------
+  You describe the problem
+        |
+        v
+  PLAN        AI chooses which search tools to run (or a fixed fallback plan)
+        |
+        v
+  TOOLS       Plain code runs: search repository, search text, find symbol,
+              dependencies, git history, read file, docs, past incidents
+        |
+        v
+  EVIDENCE    Top ~22 items stored, each with file, lines, symbol, commit,
+              and the reasons it was picked
+        |
+        v
+  HYPOTHESES  AI proposes 2-4 causes citing evidence IDs; server validates
+              them and caps confidence
+        |
+        v
+  VERIFY      Strongest candidates are re-checked against freshly read code
+        |
+        v
+  RESULT      Root cause (what, why, files, symbols, why alternatives are
+              weaker)  OR  "There isn't enough evidence yet" + what is missing
+
+
+---------------------------------------------------------------------
+7. SECURITY IN SHORT
+---------------------------------------------------------------------
+  - Secrets are server-only environment variables; none reach the browser.
+  - Passwords hashed with scrypt; sessions are HttpOnly cookies, hashed in DB.
+  - GitHub tokens encrypted (AES-256-GCM).
+  - Every project/API request is authorized on the server (owner check),
+    not just hidden in the frontend. Other users get a 404.
+  - Only files that were indexed can be fetched (so .env etc. never served).
+  - Repository text is treated as untrusted data (prompt-injection safe):
+    wrapped in tags, tags escaped, secrets redacted before reaching the AI.
+  - AI calls are rate limited and logged (model, tokens, time) without
+    storing prompts.
+  - Not yet done: login rate limiting, email verification, password reset.
+
+
+---------------------------------------------------------------------
+8. IMPORTANT FILES / FOLDERS
+---------------------------------------------------------------------
+  prisma/schema.prisma        database model + migrations
+  src/lib/repo/               indexing pipeline, parser, search, evidence
+  src/lib/ai/                 provider, embeddings, retrieval, chat,
+                              investigation orchestrator, tools
+  src/lib/session.ts, authz.ts   auth + ownership checks
+  src/lib/github.ts           GitHub App integration
+  src/app/api/                REST endpoints (index, search, chat, ...)
+  src/components/             UI (ui/, layout/, features/)
+  docs/GITHUB_APP.md, docs/AI.md   setup + AI architecture notes
+  .env.example                list of required variables (no real values)
+
+
+---------------------------------------------------------------------
+9. HOW TO RUN
+---------------------------------------------------------------------
+  1. Copy .env.example to .env.local and fill in: Neon database URLs,
+     ENCRYPTION_KEY (32 bytes base64), GitHub App values, NVIDIA_API_KEY.
+  2. npm install
+  3. npm run db:migrate        (applies migrations to Neon)
+  4. npm run dev               (uses webpack; Turbopack fails on the E: drive)
+  5. Open http://localhost:3000 -> sign up -> create project -> Index
+     repository -> Build semantic index -> Ask / Start Investigation.
+  Note: do not set NODE_ENV in .env.local (it breaks "next build").
+
+
+---------------------------------------------------------------------
+10. KNOWN LIMITS (be ready to say these)
+---------------------------------------------------------------------
+  - NVIDIA free endpoints are slow; the configured primary model (Gemma)
+    stalled during testing, so requests fail over to other models.
+    A question takes ~1 minute, a full investigation 3-8 minutes.
+  - Indexing and investigation run inside one server request; very large
+    repositories need a background queue (planned).
+  - A server crash mid-investigation can leave it stuck as "Investigating".
+  - Health scores are placeholders; no real measurement yet.
+  - The GitHub flow was verified against the API and credentials, but the
+    full click-through needs the GitHub App installed on an account.
+
+
+---------------------------------------------------------------------
+11. INTERVIEW QUESTIONS AND SHORT ANSWERS
+---------------------------------------------------------------------
+Q1. What problem does CodeMind solve?
+A.  Finding the real root cause of a bug in a large codebase takes hours of
+    searching. CodeMind automates evidence collection and reasoning, and shows
+    exactly which code supports each conclusion.
+
+Q2. How is it different from ChatGPT/Copilot with a repo?
+A.  Those answer from a prompt and can hallucinate. CodeMind retrieves
+    evidence with deterministic search first, forces the AI to cite it,
+    validates citations on the server, and can answer "not enough evidence".
+
+Q3. Explain the architecture in one minute.
+A.  Next.js app (UI + API). Neon Postgres stores users, projects, an index of
+    files/symbols/chunks and vectors. A pipeline downloads the repo from GitHub,
+    parses and indexes it. Search + evidence engine runs without AI. NVIDIA
+    models are called only to plan, propose hypotheses, verify and explain.
+
+Q4. What is RAG and how did you do it?
+A.  Retrieval-Augmented Generation: fetch relevant context, then generate.
+    I use HYBRID retrieval - exact text, symbol, file, dependency, git and
+    vector search - merged with Reciprocal Rank Fusion, then send only the
+    top, redacted snippets to the model.
+
+Q5. Why not vector search only?
+A.  Embeddings are fuzzy; they miss exact identifiers and error strings.
+    Combining exact + semantic search gives better precision and recall.
+
+Q6. How do you stop the AI from hallucinating?
+A.  (1) Only evidence is given to it, (2) it must cite evidence IDs,
+    (3) server removes unknown citations and non-existent file paths,
+    (4) no evidence = no model call, (5) confidence is capped by evidence,
+    (6) "supported" without a citation becomes "inconclusive".
+
+Q7. How do you handle prompt injection from repository files?
+A.  Repo text is untrusted data: wrapped in tags the model is told never to
+    obey, delimiter tags inside it are escaped, secrets are redacted, and
+    outputs are validated, so injected instructions cannot change behaviour.
+
+Q8. Why pgvector, and why halfvec?
+A.  Keeps vectors next to relational data in one database. The embedding
+    model returns 2048 dimensions; pgvector can index only 2000 for the
+    normal vector type, so I index a halfvec cast (up to 4000). The dimension
+    is read from the model, never hard-coded.
+
+Q9. How do you index a big repository efficiently?
+A.  One tarball download at a pinned commit (not one API call per file),
+    streaming parse, size limits, ignore rules, batched inserts, and
+    resumable embedding in time-boxed batches.
+
+Q10. What is syntax-aware chunking and why use it?
+A.  Chunks follow functions/classes (from the AST) instead of fixed text
+    sizes, so each chunk is a meaningful unit and search results map to real
+    symbols and line ranges.
+
+Q11. How does authentication work?
+A.  Passwords hashed with scrypt. On login a random token is set in an
+    HttpOnly cookie; only its SHA-256 hash is stored. The proxy only does a
+    quick cookie check; real checks happen on the server in layouts, pages
+    and API routes.
+
+Q12. How do you prevent one user seeing another user's project?
+A.  Every query is scoped by owner; a central requireProject helper returns
+    404 (not 403) for other users' projects. Authorization is server-side
+    only. I tested this with two users.
+
+Q13. Why a GitHub App instead of OAuth or a personal token?
+A.  Fine-grained, repository-level permissions chosen by the user, short-lived
+    installation tokens, and minimal read-only scopes for now.
+
+Q14. How do you protect secrets?
+A.  Server-only env vars validated at startup, "server-only" imports so they
+    cannot be bundled into the browser, GitHub tokens encrypted in the DB,
+    secrets and .env files excluded from indexing and redacted from prompts,
+    logs redact sensitive keys.
+
+Q15. What was the hardest technical problem?
+A.  Making AI output trustworthy: model latency/stalling (solved with
+    streaming + first-byte timeout + model failover), invalid JSON (schema
+    validation + one repair retry), and unsupported claims (server-side
+    citation and path validation).
+
+Q16. How did you handle the slow / failing AI model?
+A.  Chat is streamed; a model silent for 25 s is treated as stalled and
+    skipped (circuit breaker for 5 min) while a slow-but-streaming model gets
+    longer. A fallback chain is configurable via environment variables.
+
+Q17. How is the AI provider abstracted?
+A.  An AIProvider interface (chat, embed, embeddingInfo). NVIDIAProvider is
+    one implementation; the rest of the app imports only the interface, so
+    another vendor can be added without redesign.
+
+Q18. How did you test it?
+A.  Unit tests (parser, filters, ranking, JSON repair, redaction, failover),
+    a real open-source repo for the evidence engine, a real Postgres with
+    pgvector for persistence and isolation, live NVIDIA runs, a planted-bug
+    investigation, and headless-browser checks in both themes and on mobile.
+    (Test files were later removed from the repo at your request.)
+
+Q19. What would you build next?
+A.  Fix generation with a diff, regression tests, validation in a secure
+    sandbox (never on the web server), AI code review, human approval and
+    pull request creation; then rate limiting, a job queue, real health
+    metrics and similar-incident memory.
+
+Q20. How would you scale it?
+A.  Move indexing/investigations to a background queue with workers, add
+    incremental re-indexing by commit diff, cache hot queries, paginate
+    large trees, and run test execution in isolated containers.
+
+Q21. What are the trade-offs / weaknesses?
+A.  AI latency, runs in a single request for now, health scores are
+    placeholders, no incremental indexing, no email verification or login
+    rate limiting yet. I list these openly instead of hiding them.
+
+Q22. Why does the UI say "Not run" in places?
+A.  Product rule: never claim a result that did not happen. Anything not
+    executed shows Not run / Pending / Unavailable.
+
+
+---------------------------------------------------------------------
+12. ONE-LINE SUMMARY FOR INTERVIEWS
+---------------------------------------------------------------------
+"CodeMind AI is an evidence-driven bug-investigation platform: it indexes a
+GitHub repo, retrieves real code evidence with hybrid search, lets an LLM
+reason only over that evidence, validates every claim on the server, and
+reports a root cause or an honest 'not enough evidence' - with a human always
+in control."
+=====================================================================

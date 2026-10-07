@@ -1,11 +1,12 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Loader2, Mail, User } from "lucide-react";
 import Link from "next/link";
 import { useActionState } from "react";
 import { loginAction, signupAction, type FormState } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
-import { Field, InlineAlert, inputClass } from "@/components/ui/field";
+import { Field, InlineAlert } from "@/components/ui/field";
+import { PasswordInput, TextInput } from "@/components/ui/input";
 
 export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(mode === "login" ? loginAction : signupAction, {});
@@ -22,14 +23,14 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
 
       {!isLogin && (
         <Field label="Name" hint="Optional">
-          <input name="name" autoComplete="name" className={inputClass} />
+          <TextInput name="name" autoComplete="name" icon={<User />} placeholder="Ada Lovelace" />
         </Field>
       )}
       <Field label="Email" error={state.fieldErrors?.email}>
-        <input name="email" type="email" required autoComplete="email" defaultValue={state.email} aria-invalid={!!state.fieldErrors?.email} className={inputClass} placeholder="you@company.com" />
+        <TextInput name="email" type="email" required autoComplete="email" defaultValue={state.email} error={state.fieldErrors?.email} icon={<Mail />} placeholder="you@company.com" />
       </Field>
-      <Field label="Password" error={state.fieldErrors?.password} hint={!isLogin ? "At least 10 characters." : undefined}>
-        <input name="password" type="password" required minLength={isLogin ? undefined : 10} autoComplete={isLogin ? "current-password" : "new-password"} aria-invalid={!!state.fieldErrors?.password} className={inputClass} />
+      <Field label="Password" error={state.fieldErrors?.password} >
+        <PasswordInput name="password" required minLength={isLogin ? undefined : 10} autoComplete={isLogin ? "current-password" : "new-password"} error={state.fieldErrors?.password} showStrength={!isLogin} placeholder={isLogin ? "Your password" : "Create a strong password"} />
       </Field>
 
       <Button type="submit" variant="primary" size="lg" disabled={pending} className="w-full" icon={pending ? <Loader2 className="size-4 animate-spin" /> : undefined}>{pending ? "Please wait…" : isLogin ? "Sign in" : "Create account"}</Button>

@@ -5,7 +5,8 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { Field, InlineAlert, inputClass, textareaClass } from "@/components/ui/field";
+import { Field, InlineAlert, inputClass } from "@/components/ui/field";
+import { TextArea } from "@/components/ui/input";
 import { useProject } from "@/components/layout/project-context";
 
 const SEVERITIES = ["LOW", "MEDIUM", "HIGH", "CRITICAL"] as const;
@@ -45,7 +46,7 @@ export function StartInvestigationButton({ variant = "primary" }: { variant?: "p
         <div className="space-y-3 p-4">
           {error && <InlineAlert>{error}</InlineAlert>}
           {project && project.status !== "indexed" && <InlineAlert tone="warning">This repository is not indexed yet. Index it from the project page first.</InlineAlert>}
-          <Field label="What is going wrong?" hint="Be concrete: the symptom, where it happens, error messages, and what you have already ruled out."><textarea data-autofocus value={text} onChange={(e) => setText(e.target.value)} rows={6} maxLength={4000} placeholder="Describe the symptom, where it happens and anything you have already ruled out…" className={textareaClass} /></Field>
+          <Field label="What is going wrong?" hint="Be concrete: the symptom, where it happens, error messages, and what you have already ruled out."><TextArea data-autofocus value={text} onChange={(e) => setText(e.target.value)} rows={6} maxLength={4000} placeholder="Describe the symptom, where it happens and anything you have already ruled out…" className="min-h-36" /></Field>
           <Field label="Severity"><select value={severity} onChange={(e) => setSeverity(e.target.value as (typeof SEVERITIES)[number])} className={inputClass}>
               {SEVERITIES.map((s) => <option key={s} value={s}>{s[0] + s.slice(1).toLowerCase()}</option>)}
             </select></Field>
