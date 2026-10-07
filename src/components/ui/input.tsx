@@ -17,7 +17,7 @@ export function TextInput({ icon, error, className, onClear, ...rest }: BaseProp
   const hasValue = typeof rest.value === "string" && rest.value.length > 0;
   return (
     <div className={cn(shell, error ? "border-danger" : "border-border", className)}>
-      {icon && <span aria-hidden className={iconCls}>{icon}</span>}
+      {icon && <span aria-hidden className={cn(iconCls, "grid place-items-center [&>svg]:size-4")}>{icon}</span>}
       <input {...rest} aria-invalid={!!error || undefined} className={field} />
       {onClear && hasValue && (
         <button type="button" onClick={onClear} aria-label="Clear" className="grid size-6 place-items-center rounded-md text-subtle transition-colors hover:bg-surface-3 hover:text-fg"><X className="size-3.5" /></button>
