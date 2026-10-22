@@ -4,6 +4,8 @@ import { LinkButton } from "@/components/ui/button";
 import { Card, CardBody, CardHeader, PageHeader, Stat } from "@/components/ui/card";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
 import { githubConfigured, nvidiaConfigured } from "@/lib/env";
+import { RecoveryCard } from "@/components/features/recovery-card";
+import { db } from "@/lib/db";
 import { getConnection } from "@/lib/github";
 import { requireUser } from "@/lib/session";
 
@@ -22,6 +24,7 @@ export default async function SettingsPage() {
   const gh = githubConfigured() ? await getConnection(user.id) : null;
   const ghReady = githubConfigured();
   const aiReady = nvidiaConfigured();
+  const recovery = await db.user.findUnique({ where: { id: user.id }, select: { recoveryCodeHash: true, recoveryCodeAt: true } });
 
   return (
     <>
@@ -60,7 +63,8 @@ export default async function SettingsPage() {
           </Card>
 
           <Card><div id="security" className="scroll-mt-4" />
-            <CardHeader icon={<ShieldCheck className="size-4" />} title="Security" description="How your data is protected" />
+            <CardHeader icon={<ShieldCheck className="size-4" />} title="Security" description="Account recovery and how your data is protected" />
+            <CardBody className="border-b border-border"><RecoveryCard hasCode={!!recovery?.recoveryCodeHash} createdAt={recovery?.recoveryCodeAt?.toISOString() ?? null} /></CardBody>
             <CardBody><ul className="list-disc space-y-2 pl-5 text-sm text-muted marker:text-subtle"><li>Passwords are hashed with scrypt; sessions use HttpOnly cookies.</li><li>GitHub tokens are encrypted at rest.</li><li>Secrets found in source files are redacted before any text reaches a model.</li><li>CodeMind never creates a pull request without your explicit approval.</li></ul></CardBody>
           </Card>
         </div>

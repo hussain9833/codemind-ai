@@ -5,7 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * It does not validate the session. Real authentication/authorization is enforced
  * server-side in layouts, pages, actions and route handlers (requireUser / requireProject).
  */
-const PUBLIC = ["/login", "/signup"];
+const PUBLIC = ["/login", "/signup", "/forgot-password", "/reset-password"];
 /** Brand assets and metadata files must be reachable without a session (crawlers, link previews, browser tabs). */
 const PUBLIC_ASSETS = ["/icon.svg", "/apple-icon", "/opengraph-image", "/twitter-image", "/manifest.webmanifest", "/favicon.ico"];
 

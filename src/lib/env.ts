@@ -34,6 +34,11 @@ const schema = z.object({
   /** Comma-separated fallbacks, tried in order when the primary times out or is unavailable. */
   NVIDIA_CHAT_FALLBACK_MODELS: blank(z.string().optional()),
   NVIDIA_EMBED_MODEL: blank(z.string().min(1).optional()),
+
+  /** Transactional email (password-reset links) via Resend. Optional: without it the email option is hidden. */
+  RESEND_API_KEY: blank(z.string().min(1).optional()),
+  /** e.g. "CodeMind <no-reply@yourdomain.com>". Must be a sender verified in Resend. */
+  MAIL_FROM: blank(z.string().min(3).optional()),
 });
 
 export type Env = z.infer<typeof schema>;

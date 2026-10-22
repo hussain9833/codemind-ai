@@ -21,4 +21,5 @@ Neon: use the **pooled** connection string for `DATABASE_URL` and the **direct**
 - Passwords: scrypt. Sessions: random token in an HttpOnly cookie; only its SHA-256 is stored.
 - GitHub tokens: AES-256-GCM encrypted at rest.
 - `src/proxy.ts` only redirects cookie-less visitors; real auth is enforced in server layouts/pages/actions (`requireUser`) and project ownership in `requireProject` / user-scoped queries in `src/lib/api.ts`.
-- Not implemented yet: login rate limiting, email verification, password reset (see report).
+- Password reset uses a one-time recovery code (no email/OTP): shown once at signup, stored only as an HMAC, required with the account email at `/forgot-password`, replaced after every use, and all sessions are revoked on reset. Existing accounts create a code in Settings → Security.
+- Not implemented yet: login rate limiting, email verification. Reset-attempt limiting is in-memory per server instance; use a shared store (Redis/DB) before wide public use.

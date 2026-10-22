@@ -7,10 +7,10 @@ export const inputClass =
 
 export const textareaClass = cn(inputClass, "h-auto resize-none py-2.5 leading-relaxed");
 
-export function Field({ label, hint, error, children }: { label: string; hint?: ReactNode; error?: ReactNode; children: ReactNode }) {
+export function Field({ label, hint, error, children, action }: { label: string; hint?: ReactNode; error?: ReactNode; children: ReactNode; action?: ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-sm font-medium text-fg">{label}</span>
+      <span className="mb-1.5 flex items-center justify-between gap-3 text-sm font-medium text-fg">{label}{action}</span>
       {children}
       {error ? <span className="mt-1.5 block text-xs text-danger">{error}</span> : hint ? <span className="mt-1.5 block text-xs text-subtle">{hint}</span> : null}
     </label>

@@ -2,15 +2,23 @@
 
 import { Loader2, Mail, User } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useActionState } from "react";
 import { loginAction, signupAction, type FormState } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
 import { Field, InlineAlert } from "@/components/ui/field";
 import { PasswordInput, TextInput } from "@/components/ui/input";
+import { RecoveryCodePanel } from "./recovery-code-panel";
 
-export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: string }) {
+export function AuthForm({ mode, next, notice }: { mode: "login" | "signup"; next?: string; notice?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(mode === "login" ? loginAction : signupAction, {});
   const isLogin = mode === "login";
+  const router = useRouter();
+
+  // Signup succeeded: the account and session exist; show the one-time recovery code before entering the app.
+  if (state.done && state.recoveryCode) {
+    return <RecoveryCodePanel code={state.recoveryCode} onContinue={() => { router.push("/"); router.refresh(); }} />;
+  }
   return (
     <form action={action} className="space-y-5" noValidate>
       <div>
@@ -18,18 +26,19 @@ export function AuthForm({ mode, next }: { mode: "login" | "signup"; next?: stri
         <p className="mt-1.5 text-sm text-muted">{isLogin ? "Sign in to continue your investigations." : "Start investigating problems with evidence."}</p>
       </div>
 
+      {notice && <InlineAlert tone="success">{notice}</InlineAlert>}
       {state.error && <InlineAlert>{state.error}</InlineAlert>}
       {next && <input type="hidden" name="next" value={next} />}
 
       {!isLogin && (
-        <Field label="Name" hint="Optional">
-          <TextInput name="name" autoComplete="name" icon={<User />} placeholder="Ada Lovelace" />
+        <Field label="Full name" error={state.fieldErrors?.name}>
+          <TextInput name="name" required minLength={2} autoComplete="name" error={state.fieldErrors?.name} icon={<User />} placeholder="Ada Lovelace" />
         </Field>
       )}
       <Field label="Email" error={state.fieldErrors?.email}>
         <TextInput name="email" type="email" required autoComplete="email" defaultValue={state.email} error={state.fieldErrors?.email} icon={<Mail />} placeholder="you@company.com" />
       </Field>
-      <Field label="Password" error={state.fieldErrors?.password} >
+      <Field label="Password" error={state.fieldErrors?.password} action={isLogin ? <Link href="/forgot-password" className="text-xs font-medium text-accent-strong underline-offset-4 hover:underline">Forgot password?</Link> : undefined}>
         <PasswordInput name="password" required minLength={isLogin ? undefined : 10} autoComplete={isLogin ? "current-password" : "new-password"} error={state.fieldErrors?.password} showStrength={!isLogin} placeholder={isLogin ? "Your password" : "Create a strong password"} />
       </Field>
 

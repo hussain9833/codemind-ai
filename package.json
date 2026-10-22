@@ -14,7 +14,8 @@
     "db:studio": "node scripts/with-env.mjs prisma studio",
     "db:status": "node scripts/with-env.mjs prisma migrate status",
     "dev:webpack": "next dev --webpack",
-    "dev:turbo": "next dev"
+    "dev:turbo": "next dev",
+    "admin:reset-password": "node scripts/admin-reset-password.mjs"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",

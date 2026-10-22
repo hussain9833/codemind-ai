@@ -121,12 +121,31 @@ model User {
   email        String   @unique
   name         String?
   passwordHash String
+  /// Keyed hash (HMAC-SHA256) of the one-time account recovery code. The code itself is never stored.
+  recoveryCodeHash String?
+  recoveryCodeAt   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   sessions         Session[]
+  resetTokens      PasswordResetToken[]
   githubConnection GithubConnection?
   projects         Project[]
+}
+
+/// Single-use password-reset link. Only a SHA-256 hash of the emailed token is stored.
+model PasswordResetToken {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
 }
 
 /// Server-side session. Only a SHA-256 hash of the cookie token is stored.
