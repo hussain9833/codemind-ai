@@ -1,94 +1,73 @@
 "use client";
 
-import { ArrowLeft, KeyRound, Loader2, Mail, MailCheck, Send, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Loader2, Mail, MailCheck, Send, ShieldCheck } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useActionState, useState } from "react";
-import { requestResetLinkAction, resetPasswordAction, type FormState } from "@/app/(auth)/actions";
+import { useActionState, useEffect, useState } from "react";
+import { requestResetOtpAction, resetWithOtpAction, type FormState } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
 import { Field, InlineAlert } from "@/components/ui/field";
 import { PasswordInput, TextInput } from "@/components/ui/input";
-import { Tabs } from "@/components/ui/tabs";
-import { RecoveryCodePanel } from "./recovery-code-panel";
 
-type Method = "email" | "code";
+const RESEND_SECONDS = 60;
 
-/** Email-link reset (default) and recovery-code reset (alternative). */
-export function ForgotForm({ emailAvailable }: { emailAvailable: boolean }) {
-  const [method, setMethod] = useState<Method>(emailAvailable ? "email" : "code");
+/** Two steps: (1) email a 6-digit code, (2) enter the code and choose a new password. */
+export function ForgotForm() {
+  const [send, sendAction, sending] = useActionState<FormState, FormData>(requestResetOtpAction, {});
+  const [verify, verifyAction, verifying] = useActionState<FormState, FormData>(resetWithOtpAction, {});
+  const email = send.email ?? verify.email ?? "";
+  const step2 = !!send.done;
+
+  // Cooldown before "Resend" is offered (matches the server-side 60 s limit).
+  const [wait, setWait] = useState(RESEND_SECONDS);
+  useEffect(() => {
+    if (!send.done) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setWait(RESEND_SECONDS);
+    const t = setInterval(() => setWait((w) => (w > 0 ? w - 1 : 0)), 1000);
+    return () => clearInterval(t);
+  }, [send]);
+
   return (
     <div className="space-y-5">
       <div>
         <Link href="/login" className="mb-4 inline-flex items-center gap-1.5 text-sm text-muted transition-colors hover:text-fg"><ArrowLeft className="size-4" />Back to sign in</Link>
-        <h1 className="text-2xl font-semibold tracking-tight">Reset your password</h1>
-        <p className="mt-1.5 text-sm text-muted">Choose how you want to prove it is your account.</p>
+        <h1 className="text-2xl font-semibold tracking-tight">{step2 ? "Enter your code" : "Reset your password"}</h1>
+        <p className="mt-1.5 text-sm text-muted">{step2 ? <>If an account exists for <span className="font-medium text-fg">{email}</span>, we emailed a 6-digit code. It expires in 10 minutes.</> : "Enter your account email and we will send you a 6-digit code."}</p>
       </div>
-      {emailAvailable && (
-        <Tabs<Method> label="Reset method" value={method} onChange={setMethod} className="flex w-full [&>button]:flex-1 [&>button]:justify-center" items={[{ id: "email", label: "Email me a link", icon: <Mail className="size-4" /> }, { id: "code", label: "Recovery code", icon: <KeyRound className="size-4" /> }]} />
+
+      {!step2 ? (
+        <form action={sendAction} className="space-y-5" noValidate>
+          {send.error && <InlineAlert>{send.error}</InlineAlert>}
+          <Field label="Email" error={send.fieldErrors?.email}>
+            <TextInput name="email" type="email" required autoComplete="email" defaultValue={send.email} error={send.fieldErrors?.email} icon={<Mail />} placeholder="you@company.com" />
+          </Field>
+          <Button type="submit" variant="primary" size="lg" disabled={sending} className="w-full" icon={sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}>{sending ? "Sending…" : "Send code"}</Button>
+        </form>
+      ) : (
+        <div className="space-y-5">
+          <div role="status" className="flex items-start gap-3 rounded-xl border border-success/30 bg-success/5 px-4 py-3 text-sm text-muted"><MailCheck className="mt-0.5 size-4 shrink-0 text-success" />Check your inbox (and spam folder) for the code.</div>
+
+          <form action={verifyAction} className="space-y-5" noValidate>
+            <input type="hidden" name="email" value={email} />
+            {verify.error && <InlineAlert>{verify.error}</InlineAlert>}
+            <Field label="6-digit code" error={verify.fieldErrors?.code}>
+              <TextInput name="code" required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} autoComplete="one-time-code" error={verify.fieldErrors?.code} icon={<ShieldCheck />} placeholder="123456" className="[&_input]:font-mono [&_input]:text-lg [&_input]:tracking-[0.4em]" />
+            </Field>
+            <Field label="New password" error={verify.fieldErrors?.password}>
+              <PasswordInput name="password" required minLength={10} autoComplete="new-password" error={verify.fieldErrors?.password} showStrength placeholder="Create a strong password" />
+            </Field>
+            <Field label="Confirm new password" error={verify.fieldErrors?.confirm}>
+              <PasswordInput name="confirm" required minLength={10} autoComplete="new-password" error={verify.fieldErrors?.confirm} placeholder="Repeat the new password" />
+            </Field>
+            <Button type="submit" variant="primary" size="lg" disabled={verifying} className="w-full" icon={verifying ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}>{verifying ? "Verifying…" : "Reset password"}</Button>
+          </form>
+
+          <form action={sendAction} className="text-center text-sm text-muted">
+            <input type="hidden" name="email" value={email} />
+            {wait > 0 ? <span>Didn&apos;t get it? You can resend in {wait}s</span> : <button type="submit" disabled={sending} className="font-medium text-accent-strong underline-offset-4 hover:underline disabled:opacity-60">{sending ? "Sending…" : "Resend code"}</button>}
+          </form>
+        </div>
       )}
-      {method === "email" && emailAvailable ? <EmailLinkForm /> : <RecoveryCodeForm />}
     </div>
-  );
-}
-
-function EmailLinkForm() {
-  const [state, action, pending] = useActionState<FormState, FormData>(requestResetLinkAction, {});
-  if (state.done) {
-    return (
-      <div role="status" className="space-y-3 rounded-xl border border-success/30 bg-success/5 p-5 text-center">
-        <span className="mx-auto grid size-11 place-items-center rounded-xl bg-success/15 text-success"><MailCheck className="size-5" /></span>
-        <h2 className="text-lg font-semibold">Check your email</h2>
-        <p className="text-sm text-muted">If an account exists for <span className="font-medium text-fg">{state.email}</span>, we sent a link to reset the password. It works once and expires in 30 minutes.</p>
-        <p className="text-xs text-subtle">Nothing arrived? Check spam, or wait a minute and try again.</p>
-      </div>
-    );
-  }
-  return (
-    <form action={action} className="space-y-5" noValidate>
-      {state.error && <InlineAlert>{state.error}</InlineAlert>}
-      <Field label="Email" error={state.fieldErrors?.email} hint="We will email you a secure link to choose a new password.">
-        <TextInput name="email" type="email" required autoComplete="email" defaultValue={state.email} error={state.fieldErrors?.email} icon={<Mail />} placeholder="you@company.com" />
-      </Field>
-      <Button type="submit" variant="primary" size="lg" disabled={pending} className="w-full" icon={pending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}>{pending ? "Sending…" : "Send reset link"}</Button>
-    </form>
-  );
-}
-
-function RecoveryCodeForm() {
-  const router = useRouter();
-  const [state, action, pending] = useActionState<FormState, FormData>(resetPasswordAction, {});
-
-  if (state.done && state.recoveryCode) {
-    return (
-      <div className="space-y-4">
-        <InlineAlert tone="success">Password updated and all devices signed out.</InlineAlert>
-        <RecoveryCodePanel
-          code={state.recoveryCode}
-          title="Your new recovery code"
-          intro="The code you just used no longer works. Save this new one: you will need it next time."
-          continueLabel="Continue to sign in"
-          onContinue={() => router.push("/login?reset=1")}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <form action={action} className="space-y-5" noValidate>
-      {state.error && <InlineAlert>{state.error}</InlineAlert>}
-      <Field label="Email" error={state.fieldErrors?.email}>
-        <TextInput name="email" type="email" required autoComplete="email" defaultValue={state.email} error={state.fieldErrors?.email} icon={<Mail />} placeholder="you@company.com" />
-      </Field>
-      <Field label="Recovery code" error={state.fieldErrors?.code} hint="The code you saved at signup, like XXXXX-XXXXX-XXXXX-XXXXX. Case and dashes do not matter.">
-        <TextInput name="code" required autoComplete="off" autoCapitalize="characters" spellCheck={false} error={state.fieldErrors?.code} icon={<KeyRound />} placeholder="XXXXX-XXXXX-XXXXX-XXXXX" className="[&_input]:font-mono [&_input]:tracking-wider" />
-      </Field>
-      <Field label="New password" error={state.fieldErrors?.password}>
-        <PasswordInput name="password" required minLength={10} autoComplete="new-password" error={state.fieldErrors?.password} showStrength placeholder="Create a strong password" />
-      </Field>
-      <Field label="Confirm new password" error={state.fieldErrors?.confirm}>
-        <PasswordInput name="confirm" required minLength={10} autoComplete="new-password" error={state.fieldErrors?.confirm} placeholder="Repeat the new password" />
-      </Field>
-      <Button type="submit" variant="primary" size="lg" disabled={pending} className="w-full" icon={pending ? <Loader2 className="size-4 animate-spin" /> : <ShieldCheck className="size-4" />}>{pending ? "Verifying…" : "Reset password"}</Button>
-    </form>
   );
 }

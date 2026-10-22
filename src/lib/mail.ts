@@ -1,44 +1,61 @@
 import "server-only";
+import nodemailer, { type Transporter } from "nodemailer";
 import { env } from "./env";
 import { log } from "./log";
 
 /**
- * Transactional email through Resend's HTTP API (no extra dependency).
- * In development with no RESEND_API_KEY, the message is printed to the server console instead,
- * so the flow can be tried locally. In production without a key, email is simply unavailable.
+ * Email over SMTP (Gmail App Password works out of the box).
+ * - Configure SMTP_USER + SMTP_PASS in .env.local (see .env.example).
+ * - With no SMTP settings in development, the message is printed to the server console instead,
+ *   so the flow can be tried locally. In production without SMTP, email reset is reported as unavailable.
  */
-export const mailConfigured = () => !!process.env.RESEND_API_KEY && !!process.env.MAIL_FROM;
-const devFallback = () => process.env.NODE_ENV !== "production" && !process.env.RESEND_API_KEY;
-/** True when we can actually deliver (or, in dev, show the link in the console). */
-export const emailResetAvailable = () => mailConfigured() || devFallback();
+export const smtpConfigured = () => !!process.env.SMTP_USER && !!process.env.SMTP_PASS;
+const devFallback = () => process.env.NODE_ENV !== "production" && !smtpConfigured();
+/** True when we can really send, or (in dev) show the code in the console. */
+export const emailResetAvailable = () => smtpConfigured() || devFallback();
+
+let transporter: Transporter | undefined;
+function getTransporter(): Transporter {
+  if (transporter) return transporter;
+  const e = env();
+  const port = e.SMTP_PORT ?? 465;
+  transporter = nodemailer.createTransport({
+    host: e.SMTP_HOST ?? "smtp.gmail.com",
+    port,
+    secure: port === 465, // SSL on 465; STARTTLS on 587
+    // Google shows App Passwords as "abcd efgh ijkl mnop"; spaces are not part of the password.
+    auth: { user: e.SMTP_USER!, pass: (e.SMTP_PASS ?? "").replace(/\s+/g, "") },
+    connectionTimeout: 15_000,
+    greetingTimeout: 15_000,
+    socketTimeout: 20_000,
+  });
+  return transporter;
+}
 
 export async function sendMail(opts: { to: string; subject: string; text: string; html: string }): Promise<boolean> {
   if (devFallback()) {
     console.log(`\n[dev mail] To: ${opts.to}\n[dev mail] Subject: ${opts.subject}\n${opts.text}\n`);
     return true;
   }
+  if (!smtpConfigured()) return false;
   const e = env();
-  if (!e.RESEND_API_KEY || !e.MAIL_FROM) return false;
   try {
-    const res = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: { Authorization: `Bearer ${e.RESEND_API_KEY}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: e.MAIL_FROM, to: [opts.to], subject: opts.subject, text: opts.text, html: opts.html }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!res.ok) log.warn("mail.send_failed", { status: res.status });
-    return res.ok;
-  } catch {
-    log.warn("mail.send_error");
+    // MAIL_FROM may be a full address ("Name <a@b.com>") or just a display name ("CodeMind AI").
+    const from = !e.MAIL_FROM ? `CodeMind AI <${e.SMTP_USER}>` : e.MAIL_FROM.includes("@") ? e.MAIL_FROM : `"${e.MAIL_FROM.replace(/"/g, "")}" <${e.SMTP_USER}>`;
+    await getTransporter().sendMail({ from, to: opts.to, subject: opts.subject, text: opts.text, html: opts.html });
+    return true;
+  } catch (err) {
+    // Log the SMTP error code only (e.g. EAUTH = wrong app password). Never the credentials.
+    log.warn("mail.send_failed", { code: (err as { code?: string }).code, responseCode: (err as { responseCode?: number }).responseCode });
     return false;
   }
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
 
-export function resetEmail(name: string | null, link: string, minutes: number) {
+export function otpEmail(name: string | null, code: string, minutes: number) {
   const hello = name ? `Hi ${name},` : "Hi,";
-  const text = `${hello}\n\nSomeone asked to reset the password for your CodeMind AI account. Use this link within ${minutes} minutes:\n\n${link}\n\nIf you did not ask for this, ignore this email. Your password stays the same.\n`;
-  const html = `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:480px;margin:auto;color:#11131b"><h2 style="margin:0 0 12px">Reset your password</h2><p>${esc(hello)}</p><p>Someone asked to reset the password for your CodeMind AI account. The link works for ${minutes} minutes and only once.</p><p style="margin:24px 0"><a href="${esc(link)}" style="background:#4a56d6;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;display:inline-block;font-weight:600">Choose a new password</a></p><p style="font-size:13px;color:#666">Or paste this into your browser:<br>${esc(link)}</p><p style="font-size:13px;color:#666">If you did not ask for this, ignore this email. Your password stays the same.</p></div>`;
-  return { subject: "Reset your CodeMind AI password", text, html };
+  const text = `${hello}\n\nYour CodeMind AI password reset code is:\n\n    ${code}\n\nIt expires in ${minutes} minutes and can be used once. If you did not ask for this, ignore this email; your password has not changed. Never share this code with anyone.\n`;
+  const html = `<div style="font-family:system-ui,Segoe UI,Arial,sans-serif;max-width:480px;margin:auto;color:#11131b"><h2 style="margin:0 0 12px">Your password reset code</h2><p>${esc(hello)}</p><p>Use this code to reset your CodeMind AI password:</p><p style="font-size:34px;letter-spacing:10px;font-weight:700;margin:20px 0;padding:16px;background:#f0f2f8;border-radius:10px;text-align:center;font-family:ui-monospace,Consolas,monospace">${esc(code)}</p><p style="font-size:13px;color:#666">It expires in ${minutes} minutes and works once. If you did not ask for this, ignore this email; your password has not changed. Never share this code with anyone.</p></div>`;
+  return { subject: `${code} is your CodeMind AI reset code`, text, html };
 }

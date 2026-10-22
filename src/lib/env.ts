@@ -35,9 +35,12 @@ const schema = z.object({
   NVIDIA_CHAT_FALLBACK_MODELS: blank(z.string().optional()),
   NVIDIA_EMBED_MODEL: blank(z.string().min(1).optional()),
 
-  /** Transactional email (password-reset links) via Resend. Optional: without it the email option is hidden. */
-  RESEND_API_KEY: blank(z.string().min(1).optional()),
-  /** e.g. "CodeMind <no-reply@yourdomain.com>". Must be a sender verified in Resend. */
+  /** SMTP for password-reset OTP emails. Gmail: smtp.gmail.com / 465 / your address / a 16-character App Password. */
+  SMTP_HOST: blank(z.string().min(1).optional()),
+  SMTP_PORT: blank(z.coerce.number().int().min(1).max(65535).optional()),
+  SMTP_USER: blank(z.string().min(3).optional()),
+  SMTP_PASS: blank(z.string().min(4).optional()),
+  /** Optional display sender, e.g. "CodeMind AI <you@gmail.com>". Defaults to SMTP_USER. */
   MAIL_FROM: blank(z.string().min(3).optional()),
 });
 

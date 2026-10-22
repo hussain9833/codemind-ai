@@ -2,23 +2,15 @@
 
 import { Loader2, Mail, User } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useActionState } from "react";
 import { loginAction, signupAction, type FormState } from "@/app/(auth)/actions";
 import { Button } from "@/components/ui/button";
 import { Field, InlineAlert } from "@/components/ui/field";
 import { PasswordInput, TextInput } from "@/components/ui/input";
-import { RecoveryCodePanel } from "./recovery-code-panel";
 
 export function AuthForm({ mode, next, notice }: { mode: "login" | "signup"; next?: string; notice?: string }) {
   const [state, action, pending] = useActionState<FormState, FormData>(mode === "login" ? loginAction : signupAction, {});
   const isLogin = mode === "login";
-  const router = useRouter();
-
-  // Signup succeeded: the account and session exist; show the one-time recovery code before entering the app.
-  if (state.done && state.recoveryCode) {
-    return <RecoveryCodePanel code={state.recoveryCode} onContinue={() => { router.push("/"); router.refresh(); }} />;
-  }
   return (
     <form action={action} className="space-y-5" noValidate>
       <div>

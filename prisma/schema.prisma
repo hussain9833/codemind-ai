@@ -121,30 +121,29 @@ model User {
   email        String   @unique
   name         String?
   passwordHash String
-  /// Keyed hash (HMAC-SHA256) of the one-time account recovery code. The code itself is never stored.
-  recoveryCodeHash String?
-  recoveryCodeAt   DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   sessions         Session[]
-  resetTokens      PasswordResetToken[]
+  resetOtps        PasswordResetOtp[]
   githubConnection GithubConnection?
   projects         Project[]
 }
 
-/// Single-use password-reset link. Only a SHA-256 hash of the emailed token is stored.
-model PasswordResetToken {
+/// One-time code emailed to reset a forgotten password. Only an HMAC of the 6-digit code is stored.
+model PasswordResetOtp {
   id        String    @id @default(cuid())
   userId    String
-  tokenHash String    @unique
+  codeHash  String
   expiresAt DateTime
+  /// Wrong guesses so far; the code is burned after too many.
+  attempts  Int       @default(0)
   usedAt    DateTime?
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  @@index([userId])
+  @@index([userId, createdAt])
   @@index([expiresAt])
 }
 
